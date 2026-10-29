@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ping-agents"
+version = "0.1.0"
+description = "Local Claude and Codex messaging"
+requires-python = ">=3.11"
+dependencies = ["click>=8"]
+
+[project.scripts]
+ping = "ping_agents.cli:main"
+ping-hook = "ping_agents.hooks:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ping_agents"]
+
+[dependency-groups]
+dev = ["pytest>=9"]

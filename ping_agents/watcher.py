@@ -1,0 +1,322 @@
+"""Async watcher daemon for msg delivery notifications.
+
+Monitors the SQLite DB for pending deliveries and
+delivers notifications to recipient agents.
+
+Delivery logic for headed agents:
+- Busy (not idle) → release claim, Stop hook handles it
+- Idle + prompt empty → type slash command into pane
+- Idle + user typing → release claim, UserPromptSubmit
+  hook handles it
+"""
+
+from __future__ import annotations
+
+import asyncio
+import fcntl
+import logging
+import os
+import signal
+from collections import defaultdict
+
+from .models import _new_uuid
+from . import notifications
+from .prompt_detect import PromptState, detect_prompt_state
+from .store import MsgStore, DEFAULT_DB_PATH
+
+logger = logging.getLogger("msg.watcher")
+
+POLL_INTERVAL = 2.0  # seconds between DB checks
+IDLE_CHECK_TIMEOUT = 3.0  # quick idle check (not blocking)
+IDLE_CLEANUP_TIMEOUT = 5
+IDLE_TIME = 2.0  # seconds of no output = idle
+HEARTBEAT_INTERVAL = 10.0  # seconds between heartbeats
+SEND_TIMEOUT = 30
+SEND_CLEANUP_TIMEOUT = 5
+SEND_MAX_SECS = SEND_TIMEOUT + SEND_CLEANUP_TIMEOUT
+SEND_LEASE_SECS = SEND_MAX_SECS + 5
+
+
+class Watcher:
+    """Async delivery watcher daemon."""
+
+    def __init__(
+        self,
+        db_path: str = DEFAULT_DB_PATH,
+    ) -> None:
+        self.store = MsgStore(db_path)
+        self.watcher_id = _new_uuid()
+        self.pid = os.getpid()
+        self._running = True
+
+    async def run(self) -> None:
+        """Main watcher loop."""
+        logger.info(
+            "Watcher started (id=%s, pid=%d)",
+            self.watcher_id[:8], self.pid,
+        )
+
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(
+                sig, self._handle_shutdown,
+            )
+
+        heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop()
+        )
+
+        try:
+            while self._running:
+                await self._process_pending()
+                await asyncio.sleep(POLL_INTERVAL)
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Watcher stopped.")
+
+    def _handle_shutdown(self) -> None:
+        logger.info("Shutdown signal received.")
+        self._running = False
+
+    async def _heartbeat_loop(self) -> None:
+        """Periodically update heartbeat in DB."""
+        while True:
+            try:
+                self.store.update_heartbeat(
+                    self.watcher_id, self.pid,
+                )
+            except Exception as e:
+                logger.warning("Heartbeat failed: %s", e)
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+
+    async def _process_pending(self) -> None:
+        """Claim and process pending deliveries."""
+        try:
+            released = self.store.release_expired_claims()
+            if released:
+                logger.debug(
+                    "Released %d expired claims", released,
+                )
+
+            claimed = self.store.claim_pending_deliveries(
+                self.watcher_id,
+            )
+            if not claimed:
+                return
+
+            by_recipient: dict[str, list[dict]] = (
+                defaultdict(list)
+            )
+            for d in claimed:
+                by_recipient[d["recipient_id"]].append(d)
+
+            tasks = []
+            for recipient_id, deliveries in (
+                by_recipient.items()
+            ):
+                tasks.append(
+                    self._deliver_to_recipient(
+                        recipient_id, deliveries,
+                    )
+                )
+
+            if tasks:
+                await asyncio.gather(
+                    *tasks, return_exceptions=True,
+                )
+
+        except Exception as e:
+            logger.error("Error processing pending: %s", e)
+
+    async def _deliver_to_recipient(
+        self,
+        recipient_id: str,
+        deliveries: list[dict],
+    ) -> None:
+        """Deliver notifications to a single recipient."""
+        try:
+            deliveries = self._current_deliveries(deliveries)
+            if not deliveries:
+                return
+
+            recipient_name = deliveries[0]["recipient_name"]
+            pane_id = deliveries[0]["recipient_pane_id"]
+            tmux_socket = deliveries[0].get("recipient_tmux_socket")
+            agent_kind = deliveries[0].get(
+                "recipient_agent_kind", "claude",
+            )
+            target = pane_id
+
+            # Step 1: Quick idle check (non-blocking)
+            is_idle = await self._check_idle(target, tmux_socket)
+
+            if not is_idle:
+                # Agent is busy — release claims.
+                # Stop hook will handle delivery.
+                logger.debug(
+                    "%s is busy, releasing claims.",
+                    recipient_name,
+                )
+                self._release_deliveries(deliveries)
+                return
+
+            # Step 2: Check prompt state
+            prompt_state = detect_prompt_state(
+                target, agent_kind, tmux_socket,
+            )
+
+            if prompt_state == PromptState.HAS_TEXT:
+                # User is typing — release claims.
+                # UserPromptSubmit hook will handle it.
+                logger.debug(
+                    "%s has text in prompt, releasing.",
+                    recipient_name,
+                )
+                self._release_deliveries(deliveries)
+                return
+
+            if prompt_state == PromptState.UNKNOWN:
+                # Can't determine — release, retry next
+                # loop iteration.
+                logger.debug(
+                    "%s prompt state unknown, releasing.",
+                    recipient_name,
+                )
+                self._release_deliveries(deliveries)
+                return
+
+            # Step 3: Prompt is empty — safe to inject
+            deliveries = self._current_deliveries(deliveries)
+            if not deliveries:
+                return
+            delivery_ids = [delivery["id"] for delivery in deliveries]
+            if not self.store.renew_deliveries(
+                delivery_ids, self.watcher_id, SEND_LEASE_SECS,
+            ):
+                self._release_deliveries(deliveries)
+                return
+            notification = notifications.format_deliveries(deliveries)
+            await self._tmux_send(target, notification, tmux_socket)
+
+            self.store.mark_read(
+                recipient_id, delivery_ids=delivery_ids,
+            )
+
+            for d in deliveries:
+                self.store.mark_notified(d["id"], self.watcher_id)
+
+            logger.info(
+                "Notified %s successfully.",
+                recipient_name,
+            )
+
+        except Exception as e:
+            logger.error(
+                "Failed to deliver to %s: %s",
+                recipient_id[:8], e,
+            )
+            for d in deliveries:
+                self.store.mark_delivery_failed(
+                    d["id"], self.watcher_id, error=str(e),
+                )
+    def _current_deliveries(self, deliveries: list[dict]) -> list[dict]:
+        current = []
+        for delivery in deliveries:
+            if self.store.claim_is_current(delivery["id"], self.watcher_id):
+                current.append(delivery)
+            else:
+                self.store.release_delivery(delivery["id"], self.watcher_id)
+        return current
+
+    def _release_deliveries(
+        self, deliveries: list[dict],
+    ) -> None:
+        """Release claimed deliveries back to pending."""
+        for d in deliveries:
+            self.store.release_delivery(d["id"], self.watcher_id)
+
+    async def _check_idle(
+        self, pane_target: str, tmux_socket: str | None,
+    ) -> bool:
+        if not tmux_socket:
+            return False
+        args = ["capture-pane", "-p", "-t", pane_target]
+        try:
+            first = await self._run_tmux(tmux_socket, args)
+            await asyncio.sleep(IDLE_TIME)
+            second = await self._run_tmux(tmux_socket, args)
+            return first == second
+        except (OSError, RuntimeError, TimeoutError):
+            return False
+
+    async def _run_tmux(
+        self, socket: str, args: list[str], data: bytes | None = None,
+    ) -> bytes:
+        proc = None
+        try:
+            async with asyncio.timeout(IDLE_CHECK_TIMEOUT):
+                proc = await asyncio.create_subprocess_exec(
+                    "tmux", "-S", socket, *args,
+                    stdin=asyncio.subprocess.PIPE if data is not None else None,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate(input=data)
+        except BaseException:
+            if proc is not None and proc.returncode is None:
+                proc.kill()
+                await asyncio.wait_for(proc.communicate(), timeout=SEND_CLEANUP_TIMEOUT)
+            raise
+        if proc.returncode != 0:
+            raise RuntimeError(stderr.decode(errors="replace").strip())
+        return stdout
+
+    async def _tmux_send(
+        self, pane_target: str, text: str, tmux_socket: str | None,
+    ) -> None:
+        if not tmux_socket:
+            raise RuntimeError("recipient tmux socket is missing")
+        buffer = f"ping-{_new_uuid()}"
+        await self._run_tmux(
+            tmux_socket, ["load-buffer", "-b", buffer, "-"],
+            data=text.encode(),
+        )
+        try:
+            await self._run_tmux(
+                tmux_socket,
+                ["paste-buffer", "-p", "-d", "-b", buffer, "-t", pane_target],
+            )
+            await self._run_tmux(
+                tmux_socket, ["send-keys", "-t", pane_target, "Enter"],
+            )
+        finally:
+            try:
+                await self._run_tmux(
+                    tmux_socket, ["delete-buffer", "-b", buffer],
+                )
+            except (OSError, RuntimeError, TimeoutError):
+                pass
+
+
+def run_watcher(db_path: str = DEFAULT_DB_PATH) -> None:
+    """Entry point for the watcher daemon."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(name)s %(levelname)s "
+        "%(message)s",
+        datefmt="%H:%M:%S",
+    )
+    lock = open(f"{db_path}.watcher.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        logger.info("Watcher already running for %s", db_path)
+        return
+    with lock:
+        watcher = Watcher(db_path=db_path)
+        asyncio.run(watcher.run())
