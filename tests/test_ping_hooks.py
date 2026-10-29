@@ -212,3 +212,50 @@ class TestPromptSubmitHook:
         assert ctx["hookEventName"] == "UserPromptSubmit"
         assert "Hello receiver!" in ctx["additionalContext"]
         assert store.get_inbox(b.session_id) == []
+
+
+def _pane_env(monkeypatch):
+    from ping_agents import cli as ping_cli
+    monkeypatch.setenv("TMUX_PANE", "%7")
+    monkeypatch.setattr(ping_cli, "_detect_tmux_session", lambda pane=None: "work")
+    monkeypatch.setattr(ping_cli, "_detect_tmux_socket", lambda pane=None: "/tmp/sock")
+    monkeypatch.setattr(ping_cli, "_detect_display_addr", lambda pane=None: "work:1.1")
+    monkeypatch.setattr(ping_cli, "_prune_closed_panes", lambda store: None)
+
+
+def test_session_start_registers_and_session_end_retires(monkeypatch, tmp_path):
+    db = MsgStore(str(tmp_path / "repo/.msg/msg.db"))
+    _pane_env(monkeypatch)
+    monkeypatch.setattr("ping_agents.hooks.MsgStore", lambda path: db)
+    monkeypatch.setattr(
+        "ping_agents.hooks._find_self_agent",
+        lambda store: store.get_agent_by_name("repo-codex", "work", "/tmp/sock"),
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(cli, ["session-start", "--agent", "codex"], input="{}")
+    assert result.output == ""
+    agent = db.get_agent_by_name("repo-codex", "work", "/tmp/sock")
+    assert agent.pane_id == "%7"
+
+    runner.invoke(cli, ["session-end"], input=json.dumps({"reason": "clear"}))
+    assert db.get_agent_by_name("repo-codex", "work", "/tmp/sock") is not None
+
+    runner.invoke(cli, ["session-end"], input=json.dumps({"reason": "other"}))
+    assert db.get_agent_by_name("repo-codex", "work", "/tmp/sock") is None
+
+
+def test_prune_retires_agents_in_closed_panes_with_unread(monkeypatch, store):
+    from ping_agents import cli as ping_cli
+    live = store.register_agent("live", "%1", "work", AgentKind.CLAUDE, "/tmp/sock")
+    gone = store.register_agent("gone", "%2", "work", AgentKind.CODEX, "/tmp/sock")
+    thread = store.create_thread("t", live.session_id, [live.session_id, gone.session_id])
+    store.send_message(thread.id, live.session_id, "never read")
+
+    with patch("ping_agents.cli.subprocess.run") as run:
+        run.return_value.returncode = 0
+        run.return_value.stdout = "%1\n%3\n"
+        ping_cli._prune_closed_panes(store)
+
+    assert [a.name for a in store.list_agents()] == ["live"]
+    assert run.call_args.args[0][:3] == ["tmux", "-S", "/tmp/sock"]

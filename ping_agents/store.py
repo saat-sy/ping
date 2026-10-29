@@ -229,12 +229,22 @@ class MsgStore:
         finally:
             conn.close()
 
-    def retire_agent(self, session_id: str) -> bool:
-        """Hide an agent from live routing while preserving its history."""
+    def retire_agent(self, session_id: str, force: bool = False) -> bool:
+        """Hide an agent from live routing while preserving its history.
+
+        force retires undelivered messages too, for agents whose pane is gone.
+        """
         conn = self._get_conn()
         try:
             conn.execute("BEGIN IMMEDIATE")
             now = _now_iso()
+            if force:
+                conn.execute(
+                    "UPDATE deliveries SET state = 'retired', claimed_by = NULL, "
+                    "claim_expires_at = NULL WHERE recipient_id = ? "
+                    "AND state NOT IN ('read', 'retired')",
+                    (session_id,),
+                )
             conn.execute(RELEASE_EXPIRED_SQL, (now, session_id, session_id))
             unread = conn.execute(
                 "SELECT count(*) FROM deliveries WHERE recipient_id = ? "

@@ -1,0 +1,21 @@
+{
+  "name": "ping",
+  "interface": {
+    "displayName": "ping"
+  },
+  "plugins": [
+    {
+      "name": "ping",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/saat-sy/ping.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

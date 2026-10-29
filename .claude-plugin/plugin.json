@@ -1,0 +1,10 @@
+{
+  "name": "ping",
+  "version": "0.1.0",
+  "description": "Direct, attributed messages between terminal agents.",
+  "author": {
+    "name": "saat-sy",
+    "url": "https://github.com/saat-sy"
+  },
+  "hooks": "./hooks/claude.json"
+}

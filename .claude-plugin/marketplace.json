@@ -1,0 +1,15 @@
+{
+  "name": "ping",
+  "description": "Direct, attributed messages between terminal agents.",
+  "owner": {
+    "name": "saat-sy",
+    "url": "https://github.com/saat-sy"
+  },
+  "plugins": [
+    {
+      "name": "ping",
+      "description": "Direct, attributed messages between terminal agents.",
+      "source": "./"
+    }
+  ]
+}

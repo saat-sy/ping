@@ -1,8 +1,9 @@
 """Hook commands for msg inter-agent communication.
 
-Provides Stop and UserPromptSubmit hooks that check
-for unread messages and inject notifications into the
-agent's context. Used by both Claude Code and Codex CLI.
+Provides SessionStart and SessionEnd hooks that register and
+retire the agent's pane, and Stop and UserPromptSubmit hooks
+that check for unread messages and inject notifications into
+the agent's context. Used by both Claude Code and Codex CLI.
 
 Both hooks use the same claim protocol as the watcher
 to prevent double-notification.
@@ -18,7 +19,7 @@ import sys
 import click
 
 from .models import _new_uuid
-from . import cli as msg_cli, notifications
+from . import cli as msg_cli, notifications, sessions
 from .store import MsgStore
 
 
@@ -52,6 +53,13 @@ def _find_self_agent(store: MsgStore) -> object | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def _read_hook_input() -> dict:
+    try:
+        return json.load(sys.stdin)
+    except (json.JSONDecodeError, EOFError):
+        return {}
+
+
 def _check_and_notify(
     hook_event: str,
 ) -> None:
@@ -60,11 +68,7 @@ def _check_and_notify(
     Reads JSON from stdin, checks DB for unread messages,
     claims deliveries, outputs JSON response.
     """
-    # Read hook input
-    try:
-        hook_input = json.load(sys.stdin)
-    except (json.JSONDecodeError, EOFError):
-        hook_input = {}
+    hook_input = _read_hook_input()
 
     try:
         store = MsgStore(msg_cli._get_local_db_path(hook_input.get("cwd")))
@@ -111,6 +115,35 @@ def _approve() -> None:
 def cli() -> None:
     """ping-hook: Hook commands for msg notifications."""
     pass
+
+
+@cli.command("session-start")
+@click.option("--agent", "kind", required=True, help="Agent kind to register.")
+def session_start(kind: str) -> None:
+    """SessionStart hook — register this pane."""
+    cwd = _read_hook_input().get("cwd")
+    try:
+        sessions.register_pane(MsgStore(msg_cli._get_local_db_path(cwd)), kind, cwd=cwd)
+    except Exception as exc:
+        # Never block the agent; stdout would also enter its context.
+        print(f"ping: registration skipped: {exc}", file=sys.stderr)
+
+
+@cli.command("session-end")
+def session_end() -> None:
+    """SessionEnd hook — retire this pane's registration."""
+    hook_input = _read_hook_input()
+    # /clear starts a new session in the same pane; keep its registration.
+    if hook_input.get("reason") == "clear":
+        return
+    try:
+        store = MsgStore(msg_cli._get_local_db_path(hook_input.get("cwd")))
+        me = _find_self_agent(store)
+        if me:
+            store.retire_agent(me.session_id)
+    except Exception as exc:
+        # Unread messages keep the registration for the pane's next session.
+        print(f"ping: unregister skipped: {exc}", file=sys.stderr)
 
 
 @cli.command()

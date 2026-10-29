@@ -198,6 +198,29 @@ def _get_self_agent(store: MsgStore) -> dict | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def _prune_closed_panes(store: MsgStore) -> None:
+    """Retire agents whose tmux pane no longer exists."""
+    by_socket: dict[str | None, list] = {}
+    for agent in store.list_agents():
+        by_socket.setdefault(agent.tmux_socket, []).append(agent)
+    for socket, agents in by_socket.items():
+        cmd = ["tmux"] + (["-S", socket] if socket else [])
+        try:
+            result = subprocess.run(
+                [*cmd, "list-panes", "-a", "-F", "#{pane_id}"],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return
+        # shortcut: an unreachable tmux server prunes nothing, since its panes may still exist.
+        if result.returncode != 0:
+            continue
+        panes = set(result.stdout.split())
+        for agent in agents:
+            if agent.pane_id not in panes:
+                store.retire_agent(agent.session_id, force=True)
+
+
 def _relative_time(iso_str: str) -> str:
     """Convert ISO timestamp to relative time string."""
     try:
@@ -423,6 +446,7 @@ def retarget(ctx: click.Context, session_id: str, pane: str) -> None:
 def list_agents(ctx: click.Context) -> None:
     """List registered agents."""
     store: MsgStore = ctx.obj["store"]
+    _prune_closed_panes(store)
     tmux_session = _detect_tmux_session()
     agents = store.list_agents(tmux_session, _detect_tmux_socket())
 
@@ -551,6 +575,7 @@ def send(
         ping send my-claude,my-codex "everyone review"
     """
     store: MsgStore = ctx.obj["store"]
+    _prune_closed_panes(store)
     tmux_session = _detect_tmux_session()
     tmux_socket = _detect_tmux_socket()
 

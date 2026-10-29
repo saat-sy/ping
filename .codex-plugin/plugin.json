@@ -1,0 +1,20 @@
+{
+  "name": "ping",
+  "version": "0.1.0",
+  "description": "Direct, attributed messages between terminal agents.",
+  "author": {
+    "name": "saat-sy",
+    "url": "https://github.com/saat-sy"
+  },
+  "repository": "https://github.com/saat-sy/ping",
+  "license": "MIT",
+  "skills": "./skills/",
+  "hooks": "./hooks/codex.json",
+  "interface": {
+    "displayName": "ping",
+    "shortDescription": "Local agent messaging",
+    "capabilities": [
+      "Lifecycle hooks"
+    ]
+  }
+}
