@@ -83,3 +83,10 @@ def test_custom_prompt_adapter(monkeypatch, tmp_path):
     assert prompt_detect.detect_prompt_state("%1", "custom") == prompt_detect.PromptState.EMPTY
     monkeypatch.setattr(prompt_detect, "_capture_last_lines", lambda *args, **kwargs: ["READY: draft"])
     assert prompt_detect.detect_prompt_state("%1", "custom") == prompt_detect.PromptState.HAS_TEXT
+
+
+def test_db_path_is_per_tmux_session(monkeypatch):
+    monkeypatch.setattr(cli, "_detect_tmux_session", lambda pane=None: "a/b")
+    assert cli._get_db_path() == os.path.join(store.DEFAULT_DB_DIR, "a_b", "msg.db")
+    monkeypatch.setattr(cli, "_detect_tmux_session", lambda pane=None: None)
+    assert cli._get_db_path() == store.DEFAULT_DB_PATH

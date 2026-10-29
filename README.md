@@ -30,6 +30,6 @@ ping send NAME "hello"
 ping say NAME "hello" --from SENDER
 ```
 
-Any agent name is accepted; custom prompts may need an [adapter](docs/adapters.md). Local databases stay in `.msg/`. Use `/usr/bin/ping` for network diagnostics.
+Any agent name is accepted; custom prompts may need an [adapter](docs/adapters.md). Each tmux session has its own database at `~/.ping/<session name>/msg.db`, so agents in different tmux sessions never see each other. Use `/usr/bin/ping` for network diagnostics.
 
 Derived from **msg** in [claude-code-tools](https://github.com/pchalasani/claude-code-tools) by Prasad Chalasani. [MIT license](LICENSE).

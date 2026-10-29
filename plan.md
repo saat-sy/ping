@@ -18,7 +18,7 @@ Reduce model turns and token usage for local agent messaging.
 
 ## Implementation
 
-Maintain a standalone Python package, CLI, direct tmux transport, hooks, prompt adapters, launch wrappers, and shared skill. Ship Claude and Codex plugins that wire the lifecycle and delivery hooks and the skill; agents whose hooks cannot see their pane, like Codex's shared background server, register through `ping launch` or Codex's `--no-daemon`. The launcher stays the agent's parent and unregisters it on exit. Retire agents whose tmux pane has closed. Keep existing local databases and registrations compatible.
+Maintain a standalone Python package, CLI, direct tmux transport, hooks, prompt adapters, launch wrappers, and shared skill. Ship Claude and Codex plugins that wire the lifecycle and delivery hooks and the skill; agents whose hooks cannot see their pane, like Codex's shared background server, register through `ping launch` or Codex's `--no-daemon`. The launcher stays the agent's parent and unregisters it on exit. Retire agents whose tmux pane has closed. Keep one database per tmux session at `~/.ping/<session name>/msg.db`.
 
 ## Verification
 
@@ -26,7 +26,7 @@ Run the full messaging suite, shell syntax and skill validation, and live delive
 
 ## Decisions
 
-Local database scope is automatic. Unknown prompts defer automatic waking. Successful transport acknowledges only its delivered batch. Keep `/usr/bin/ping` available for network diagnostics. Preserve other tools bundled with upstream msg.
+Database scope is the tmux session, so agents in different tmux sessions stay apart. Unknown prompts defer automatic waking. Successful transport acknowledges only its delivered batch. Keep `/usr/bin/ping` available for network diagnostics. Preserve other tools bundled with upstream msg.
 
 ## Learnings
 

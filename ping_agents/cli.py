@@ -27,30 +27,30 @@ def _check_db_writable(db_dir: str) -> bool:
         return False
 
 
-def _get_local_db_path(cwd: str | None = None) -> str:
-    """Get project-local DB path."""
+def _get_repo_root(cwd: str | None = None) -> str:
+    """Get the git root of cwd, or cwd outside a repository."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True, text=True, timeout=5, cwd=cwd,
         )
         if result.returncode == 0:
-            root = result.stdout.strip()
-            return os.path.join(root, ".msg", "msg.db")
+            return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    return os.path.join(cwd or os.getcwd(), ".msg", "msg.db")
+    return cwd or os.getcwd()
 
 
-def _get_store(
-    db_path: str | None = None,
-    local: bool = False,
-) -> MsgStore:
-    if db_path:
-        return MsgStore(db_path)
-    if local:
-        return MsgStore(_get_local_db_path())
-    return MsgStore(DEFAULT_DB_PATH)
+def _get_db_path() -> str:
+    """Get this tmux session's DB path, keeping sessions apart."""
+    session = _detect_tmux_session()
+    if not session:
+        return DEFAULT_DB_PATH
+    return os.path.join(DEFAULT_DB_DIR, session.replace(os.sep, "_"), "msg.db")
+
+
+def _get_store(db_path: str | None = None) -> MsgStore:
+    return MsgStore(db_path or _get_db_path())
 
 
 def _detect_tmux_pane() -> str | None:
@@ -275,21 +275,16 @@ def _ensure_watcher_running(store: MsgStore) -> None:
     "--db", default=None,
     help="Path to msg database",
 )
-@click.option(
-    "--local", is_flag=True, default=False,
-    help="Use worktree-local DB (the default)",
-)
 @click.pass_context
 def cli(
     ctx: click.Context,
     db: str | None,
-    local: bool,
 ) -> None:
     """ping: Local agent messaging."""
     ctx.ensure_object(dict)
 
 
-    store = _get_store(db_path=db, local=True)
+    store = _get_store(db_path=db)
     ctx.obj["store"] = store
     if ctx.invoked_subcommand != "watch":
         _ensure_watcher_running(store)

@@ -20,7 +20,7 @@ from .models import (
 
 DEFAULT_DB_DIR = os.environ.get(
     "MSG_DB_DIR",
-    os.path.expanduser("~/.msg"),
+    os.path.expanduser("~/.ping"),
 )
 DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, "msg.db")
 

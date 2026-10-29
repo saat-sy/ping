@@ -65,13 +65,11 @@ def _check_and_notify(
 ) -> None:
     """Common logic for both Stop and UserPromptSubmit.
 
-    Reads JSON from stdin, checks DB for unread messages,
-    claims deliveries, outputs JSON response.
+    Checks the DB for unread messages, claims deliveries,
+    and outputs a JSON response.
     """
-    hook_input = _read_hook_input()
-
     try:
-        store = MsgStore(msg_cli._get_local_db_path(hook_input.get("cwd")))
+        store = MsgStore(msg_cli._get_db_path())
     except Exception:
         _approve()
         return
@@ -123,7 +121,7 @@ def session_start(kind: str) -> None:
     """SessionStart hook — register this pane."""
     cwd = _read_hook_input().get("cwd")
     try:
-        sessions.register_pane(MsgStore(msg_cli._get_local_db_path(cwd)), kind, cwd=cwd)
+        sessions.register_pane(MsgStore(msg_cli._get_db_path()), kind, cwd=cwd)
     except Exception as exc:
         # Never block the agent; stdout would also enter its context.
         print(f"ping: registration skipped: {exc}", file=sys.stderr)
@@ -137,7 +135,7 @@ def session_end() -> None:
     if hook_input.get("reason") == "clear":
         return
     try:
-        store = MsgStore(msg_cli._get_local_db_path(hook_input.get("cwd")))
+        store = MsgStore(msg_cli._get_db_path())
         me = _find_self_agent(store)
         if me:
             store.retire_agent(me.session_id)

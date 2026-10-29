@@ -17,7 +17,7 @@ def register_pane(store, kind: str, pid: int | None = None, cwd: str | None = No
         return
     cli._prune_closed_panes(store)
     current = cli._get_self_agent(store)
-    root = Path(store.db_path).parent.parent.name
+    root = Path(cli._get_repo_root(cwd)).name
     name = os.environ.get("MSG_AGENT_NAME", f"{root}-{kind}")
     if current:
         if current.agent_kind.value != kind:

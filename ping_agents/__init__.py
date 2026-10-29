@@ -1,1 +1,1 @@
-"""Worktree-local messaging for Claude and Codex."""
+"""Tmux-session-scoped messaging for Claude and Codex."""

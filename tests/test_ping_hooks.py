@@ -232,8 +232,9 @@ def test_session_start_registers_and_session_end_retires(monkeypatch, tmp_path):
         lambda store: store.get_agent_by_name("repo-codex", "work", "/tmp/sock"),
     )
     runner = CliRunner()
+    hook_input = json.dumps({"cwd": str(tmp_path / "repo")})
 
-    result = runner.invoke(cli, ["session-start", "--agent", "codex"], input="{}")
+    result = runner.invoke(cli, ["session-start", "--agent", "codex"], input=hook_input)
     assert result.output == ""
     agent = db.get_agent_by_name("repo-codex", "work", "/tmp/sock")
     assert agent.pane_id == "%7"
