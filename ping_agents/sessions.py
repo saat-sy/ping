@@ -1,6 +1,8 @@
 """Register agent launches and send literal messages from terminals."""
 
 import os
+import signal
+import subprocess
 from pathlib import Path
 
 import click
@@ -33,10 +35,24 @@ def register_pane(store, kind: str, pid: int | None = None, cwd: str | None = No
 
 
 def launch(store, kind: str, command: tuple[str, ...]) -> None:
+    """Run the agent registered in this pane, then unregister it on exit."""
     if not command:
         raise click.ClickException("provide the agent executable after --")
     register_pane(store, kind, pid=os.getpid())
-    os.execvpe(command[0], command, os.environ.copy())
+    # Ctrl-C belongs to the agent; a handler (unlike SIG_IGN) resets on exec.
+    signal.signal(signal.SIGINT, lambda *_: None)
+    try:
+        code = subprocess.call(command)
+    except FileNotFoundError as exc:
+        code = 127
+        click.echo(f"ping: {exc}", err=True)
+    me = cli._get_self_agent(store) if cli._detect_tmux_pane() else None
+    if me:
+        try:
+            store.retire_agent(me.session_id)
+        except ValueError:
+            pass  # Unread messages keep the registration for the pane's next session.
+    raise SystemExit(128 - code if code < 0 else code)
 
 
 def say(ctx, target: str, body: str, sender: str | None) -> None:

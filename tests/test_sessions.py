@@ -17,14 +17,23 @@ def test_launch_registers_any_agent_and_reuses_name(monkeypatch, tmp_path, kind)
     monkeypatch.setattr(cli, "_detect_tmux_session", lambda pane=None: "test")
     monkeypatch.setattr(cli, "_detect_tmux_socket", lambda pane=None: "/tmp/socket")
     monkeypatch.setattr(cli, "_detect_display_addr", lambda pane=None: "test:1.2")
-    executed = []
-    monkeypatch.setattr(os, "execvpe", lambda *args: executed.append(args))
+    monkeypatch.setattr(cli, "_prune_closed_panes", lambda store: None)
+    monkeypatch.setenv("TMUX_PANE", "%2")
+    seen = []
 
-    sessions.launch(db, kind, (kind, "--example"))
+    def run_agent(command):
+        seen.append((command, [(a.session_id, a.name) for a in db.list_agents("test")]))
+        return 3
 
-    assert db.list_agents("test")[0].session_id == existing.session_id
-    assert db.list_agents("test")[0].name == "chosen-name"
-    assert executed[0][:2] == (kind, (kind, "--example"))
+    monkeypatch.setattr(sessions.subprocess, "call", run_agent)
+    monkeypatch.setattr(sessions.signal, "signal", lambda *args: None)
+
+    with pytest.raises(SystemExit) as exit_info:
+        sessions.launch(db, kind, (kind, "--example"))
+
+    assert seen == [((kind, "--example"), [(existing.session_id, "chosen-name")])]
+    assert exit_info.value.code == 3
+    assert db.list_agents("test") == []
 
 
 def test_literal_terminal_send(monkeypatch, tmp_path):

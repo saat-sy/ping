@@ -18,7 +18,7 @@ Reduce model turns and token usage for local agent messaging.
 
 ## Implementation
 
-Maintain a standalone Python package, CLI, direct tmux transport, hooks, prompt adapters, launch wrappers, and shared skill. Ship Claude and Codex plugins that wire the lifecycle and delivery hooks and the skill; other agents register through `ping launch`. Retire agents whose tmux pane has closed. Keep existing local databases and registrations compatible.
+Maintain a standalone Python package, CLI, direct tmux transport, hooks, prompt adapters, launch wrappers, and shared skill. Ship Claude and Codex plugins that wire the lifecycle and delivery hooks and the skill; agents whose hooks cannot see their pane, like Codex's shared background server, register through `ping launch` or Codex's `--no-daemon`. The launcher stays the agent's parent and unregisters it on exit. Retire agents whose tmux pane has closed. Keep existing local databases and registrations compatible.
 
 ## Verification
 

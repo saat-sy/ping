@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "ping-hook session-end",
-            "timeout": 5
+            "timeout": 3
           }
         ]
       }

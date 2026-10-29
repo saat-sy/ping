@@ -12,11 +12,14 @@ codex plugin marketplace add saat-sy/ping && codex plugin add ping@ping
 
 Requires Python 3.11+ and tmux, with `ping-hook` on the non-interactive shell's `PATH`. In Codex, open `/hooks` once and trust ping's hooks.
 
-The plugins register each Claude and Codex session in its tmux pane at startup, unregister it on exit, deliver messages, and install the [shared skill](skills/ping/SKILL.md). Panes that close without an exit hook are unregistered on the next `ping list` or `ping send`. Set `MSG_AGENT_NAME` to name a session; the default is `REPO-KIND`.
+The plugins register each Claude session in its tmux pane at startup, unregister it on exit, deliver messages, and install the [shared skill](skills/ping/SKILL.md). Panes that close without an exit hook are unregistered on the next `ping list` or `ping send`. Set `MSG_AGENT_NAME` to name a session; the default is `REPO-KIND`.
 
-Agents without plugin hooks register through the launcher:
+Codex runs hooks in its shared background server, which cannot see the session's tmux pane. Start Codex with `codex --no-daemon` for the plugin hooks to register it, or through the launcher.
+
+The launcher registers any agent, runs it, and unregisters it when it exits:
 
 ```sh
+ping launch --agent codex -- codex
 ping launch --agent opencode -- opencode
 ```
 
