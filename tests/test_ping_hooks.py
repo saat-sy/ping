@@ -223,7 +223,7 @@ def _pane_env(monkeypatch):
     monkeypatch.setattr(ping_cli, "_prune_closed_panes", lambda store: None)
 
 
-def test_session_start_registers_and_session_end_retires(monkeypatch, tmp_path):
+def test_session_end_retires(monkeypatch, tmp_path):
     db = MsgStore(str(tmp_path / "repo/.msg/msg.db"))
     _pane_env(monkeypatch)
     monkeypatch.setattr("ping_agents.hooks.MsgStore", lambda path: db)
@@ -232,12 +232,7 @@ def test_session_start_registers_and_session_end_retires(monkeypatch, tmp_path):
         lambda store: store.get_agent_by_name("repo-codex", "work", "/tmp/sock"),
     )
     runner = CliRunner()
-    hook_input = json.dumps({"cwd": str(tmp_path / "repo")})
-
-    result = runner.invoke(cli, ["session-start", "--agent", "codex"], input=hook_input)
-    assert result.output == ""
-    agent = db.get_agent_by_name("repo-codex", "work", "/tmp/sock")
-    assert agent.pane_id == "%7"
+    db.register_agent("repo-codex", "%7", "work", AgentKind.CODEX, "/tmp/sock")
 
     runner.invoke(cli, ["session-end"], input=json.dumps({"reason": "clear"}))
     assert db.get_agent_by_name("repo-codex", "work", "/tmp/sock") is not None

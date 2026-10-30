@@ -8,7 +8,7 @@ Reduce model turns and token usage for local agent messaging.
 
 - Own the MIT-derived messaging implementation in this repository, independent of the upstream tool suite.
 - Accept arbitrary agent kinds, including Claude, Codex, OpenCode, Muse, and AGY.
-- Register sessions at startup and unregister them on exit by default after install, and provide configurable prompt detection.
+- Register sessions only on request, unregister them on exit after install, and provide configurable prompt detection.
 - Deliver full bodies with `codex: message` / `claude: message` attribution, without an inbox-fetch turn.
 - Send literal text through the terminal CLI without model involvement.
 - Exempt messaging administration from application-context reads.
@@ -18,7 +18,7 @@ Reduce model turns and token usage for local agent messaging.
 
 ## Implementation
 
-Maintain a standalone Python package, CLI, direct tmux transport, hooks, prompt adapters, launch wrappers, and shared skill. Ship Claude and Codex plugins that wire the lifecycle and delivery hooks and the skill; agents whose hooks cannot see their pane, like Codex's shared background server, register through `ping launch` or Codex's `--no-daemon`. The launcher stays the agent's parent and unregisters it on exit. Retire agents whose tmux pane has closed. Keep one database per tmux session at `~/.ping/<session name>/msg.db`.
+Maintain a standalone Python package, CLI, direct tmux transport, hooks, prompt adapters, launch wrappers, and shared skill. Ship Claude and Codex plugins that wire the exit and delivery hooks and the skill; agents whose hooks cannot see their pane, like Codex's shared background server, register through `ping launch` or Codex's `--no-daemon`. The launcher stays the agent's parent and unregisters it on exit. Retire agents whose tmux pane has closed. Keep one database per tmux session at `~/.ping/<session name>/msg.db`.
 
 ## Verification
 

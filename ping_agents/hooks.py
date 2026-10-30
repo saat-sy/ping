@@ -1,7 +1,6 @@
 """Hook commands for msg inter-agent communication.
 
-Provides SessionStart and SessionEnd hooks that register and
-retire the agent's pane, and Stop and UserPromptSubmit hooks
+Provides a SessionEnd hook that retires the agent's pane, and Stop and UserPromptSubmit hooks
 that check for unread messages and inject notifications into
 the agent's context. Used by both Claude Code and Codex CLI.
 
@@ -19,7 +18,7 @@ import sys
 import click
 
 from .models import _new_uuid
-from . import cli as msg_cli, notifications, sessions
+from . import cli as msg_cli, notifications
 from .store import MsgStore
 
 
@@ -113,18 +112,6 @@ def _approve() -> None:
 def cli() -> None:
     """ping-hook: Hook commands for msg notifications."""
     pass
-
-
-@cli.command("session-start")
-@click.option("--agent", "kind", required=True, help="Agent kind to register.")
-def session_start(kind: str) -> None:
-    """SessionStart hook — register this pane."""
-    cwd = _read_hook_input().get("cwd")
-    try:
-        sessions.register_pane(MsgStore(msg_cli._get_db_path()), kind, cwd=cwd)
-    except Exception as exc:
-        # Never block the agent; stdout would also enter its context.
-        print(f"ping: registration skipped: {exc}", file=sys.stderr)
 
 
 @cli.command("session-end")

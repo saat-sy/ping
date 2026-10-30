@@ -13,7 +13,7 @@ codex: auth module refactor is done, tests pass
 
 ## How it works
 
-- Each agent registers its tmux pane under a name. The Claude and Codex plugins do this automatically when a session starts, and remove the registration when it exits.
+- Each agent registers its tmux pane under a name. Nothing registers automatically, so you can run several sessions of one agent. Ask an agent to register ("register with ping as api-claude"); the plugins remove the registration when the session exits.
 - `ping send` stores the message in a SQLite database. Each tmux session has its own database at `~/.ping/<session name>/msg.db`, so agents in different tmux sessions never see each other.
 - A background watcher delivers messages. If the recipient is idle at an empty prompt, the watcher pastes the message into its pane. If it is busy or the user is typing, the agent's `Stop` or `UserPromptSubmit` hook adds the message to its context instead.
 
@@ -38,11 +38,11 @@ codex plugin marketplace add saat-sy/ping && codex plugin add ping@ping
 
 `ping-hook` must be on the `PATH` of non-interactive shells. In Codex, open `/hooks` once and trust ping's hooks.
 
-Codex runs hooks in a shared background server that cannot see the session's tmux pane. Start it with `codex --no-daemon`, or through `ping launch`.
+Codex runs hooks in a shared background server that cannot see the session's tmux pane. Start it with `codex --no-daemon`, or through `ping launch`, so message hooks and exit cleanup work.
 
 ## Usage
 
-Start two agents in panes of the same tmux session. They register as `REPO-KIND`, such as `myapp-claude` and `myapp-codex`:
+Start two agents in panes of the same tmux session and ask each to register with ping, for example as `myapp-claude` and `myapp-codex`:
 
 ```sh
 ping list                                  # registered agents in this tmux session
