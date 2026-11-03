@@ -90,3 +90,21 @@ def test_db_path_is_per_tmux_session(monkeypatch):
     assert cli._get_db_path() == os.path.join(store.DEFAULT_DB_DIR, "a_b", "msg.db")
     monkeypatch.setattr(cli, "_detect_tmux_session", lambda pane=None: None)
     assert cli._get_db_path() == store.DEFAULT_DB_PATH
+
+
+def test_second_pane_of_same_kind_gets_suffixed_name(monkeypatch, tmp_path):
+    db = store.MsgStore(str(tmp_path / "msg.db"))
+    monkeypatch.delenv("MSG_AGENT_NAME", raising=False)
+    monkeypatch.setattr(cli, "_get_repo_root", lambda cwd=None: "/x/proj")
+    monkeypatch.setattr(cli, "_detect_tmux_session", lambda pane=None: "test")
+    monkeypatch.setattr(cli, "_detect_tmux_socket", lambda pane=None: "/tmp/socket")
+    monkeypatch.setattr(cli, "_detect_display_addr", lambda pane=None: "test:1.1")
+    monkeypatch.setattr(cli, "_prune_closed_panes", lambda store: None)
+    for pane in ("%1", "%2", "%3"):
+        monkeypatch.setattr(cli, "_detect_tmux_pane", lambda pane=pane: pane)
+        monkeypatch.setenv("TMUX_PANE", pane)
+        sessions.register_pane(db, "codex")
+
+    assert sorted(a.name for a in db.list_agents("test")) == [
+        "proj-codex", "proj-codex-2", "proj-codex-3",
+    ]

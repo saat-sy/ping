@@ -23,6 +23,13 @@ def register_pane(store, kind: str, pid: int | None = None, cwd: str | None = No
         if current.agent_kind.value != kind:
             raise click.ClickException("pane is registered for another agent kind")
         name = current.name
+    elif "MSG_AGENT_NAME" not in os.environ:
+        # Another pane already holds the default name: take the next free suffix.
+        session, socket = cli._detect_tmux_session(pane), cli._detect_tmux_socket(pane)
+        base, n = name, 1
+        while store.get_agent_by_name(name, session, socket):
+            n += 1
+            name = f"{base}-{n}"
     try:
         store.register_agent(
             name, pane, cli._detect_tmux_session(pane),
