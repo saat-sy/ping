@@ -1,6 +1,6 @@
 """Hook commands for msg inter-agent communication.
 
-Provides a SessionEnd hook that retires the agent's pane, and Stop and UserPromptSubmit hooks
+Provides a SessionEnd hook that retires the agent's pane, and Stop, PostToolUse and UserPromptSubmit hooks
 that check for unread messages and inject notifications into
 the agent's context. Used by both Claude Code and Codex CLI.
 
@@ -141,6 +141,12 @@ def stop() -> None:
 def prompt_submit() -> None:
     """UserPromptSubmit hook — check inbox on user input."""
     _check_and_notify("UserPromptSubmit")
+
+
+@cli.command("post-tool-use")
+def post_tool_use() -> None:
+    """PostToolUse hook — deliver messages between tool calls of a running turn."""
+    _check_and_notify("PostToolUse")
 
 
 def main() -> None:

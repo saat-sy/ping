@@ -15,7 +15,7 @@ codex: auth module refactor is done, tests pass
 
 - Each agent registers its tmux pane under a name. Nothing registers automatically, so you can run several sessions of one agent. Ask an agent to register ("register with ping as api-claude"); the plugins remove the registration when the session exits.
 - `ping send` stores the message in a SQLite database. Each tmux session has its own database at `~/.ping/<session name>/msg.db`, so agents in different tmux sessions never see each other.
-- A background watcher delivers messages. If the recipient is idle at an empty prompt, the watcher pastes the message into its pane. If it is busy or the user is typing, the agent's `Stop` or `UserPromptSubmit` hook adds the message to its context instead.
+- A background watcher delivers messages. If the recipient is idle at an empty prompt, the watcher pastes the message into its pane. If it is busy or the user is typing, the agent's `PostToolUse` (between tool calls), `Stop` or `UserPromptSubmit` hook adds the message to its context instead.
 
 ## Requirements
 

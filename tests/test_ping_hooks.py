@@ -141,6 +141,15 @@ class TestStopHook:
         assert "claude: Hello receiver!" in ctx["additionalContext"]
         assert store.get_inbox(b.session_id) == []
 
+    def test_post_tool_use_delivers_mid_turn(self, setup_agents):
+        _a, b, store = setup_agents
+        with patch("ping_agents.hooks.MsgStore", return_value=store), \
+             patch("ping_agents.hooks._find_self_agent", return_value=b):
+            result = CliRunner().invoke(cli, ["post-tool-use"], input="{}")
+        ctx = json.loads(result.output)["hookSpecificOutput"]
+        assert ctx["hookEventName"] == "PostToolUse"
+        assert "Hello receiver!" in ctx["additionalContext"]
+
     def test_claims_only_this_hooks_recipient(self, store):
         sender = store.register_agent(
             "sender", "%1", "test", AgentKind.CLAUDE,
