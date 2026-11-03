@@ -108,3 +108,24 @@ def test_second_pane_of_same_kind_gets_suffixed_name(monkeypatch, tmp_path):
     assert sorted(a.name for a in db.list_agents("test")) == [
         "proj-codex", "proj-codex-2", "proj-codex-3",
     ]
+
+
+def test_abort_sends_escape_to_target_pane(monkeypatch, tmp_path):
+    path = str(tmp_path / "msg.db")
+    db = store.MsgStore(path)
+    db.register_agent("me", "%1", "test", models.AgentKind("claude"), "/tmp/socket")
+    db.register_agent("peer", "%2", "test", models.AgentKind("codex"), "/tmp/socket")
+    monkeypatch.setattr(cli, "_prune_closed_panes", lambda store: None)
+    monkeypatch.setattr(cli, "_detect_tmux_session", lambda pane=None: "test")
+    monkeypatch.setattr(cli, "_detect_tmux_socket", lambda pane=None: "/tmp/socket")
+    monkeypatch.setenv("TMUX_PANE", "%1")
+    calls = []
+    monkeypatch.setattr(
+        cli.subprocess, "run",
+        lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0, "stderr": ""})(),
+    )
+
+    result = CliRunner().invoke(cli.cli, ["--db", path, "abort", "peer"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [["tmux", "-S", "/tmp/socket", "send-keys", "-t", "%2", "Escape"]]

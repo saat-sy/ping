@@ -48,6 +48,7 @@ Start two agents in panes of the same tmux session and ask each to register with
 ping list                                  # registered agents in this tmux session
 ping send myapp-codex "review auth.py"     # send as the agent in this pane
 ping send myapp-claude,myapp-codex "sync"  # send to several agents
+ping abort myapp-codex                      # interrupt its current turn (sends Escape)
 ping say myapp-codex "hi" --from myapp-claude  # send from a plain terminal
 ping inbox                                 # read unread messages by hand
 ```

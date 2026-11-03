@@ -630,6 +630,32 @@ def send(
 
 
 @cli.command()
+@click.argument("name")
+@click.pass_context
+def abort(ctx: click.Context, name: str) -> None:
+    """Interrupt a registered agent's current turn by sending Escape to its pane."""
+    store: MsgStore = ctx.obj["store"]
+    _prune_closed_panes(store)
+    if not _get_self_agent(store):
+        click.echo("Error: you are not registered. Run 'ping register <name>' first.", err=True)
+        sys.exit(1)
+    agent = _resolve_agent(store, name)
+    if not agent:
+        sys.exit(1)
+    cmd = ["tmux"]
+    if agent.tmux_socket:
+        cmd += ["-S", agent.tmux_socket]
+    result = subprocess.run(
+        [*cmd, "send-keys", "-t", agent.pane_id, "Escape"],
+        capture_output=True, text=True, timeout=5,
+    )
+    if result.returncode != 0:
+        click.echo(f"Error: abort failed: {result.stderr.strip()}", err=True)
+        sys.exit(1)
+    click.echo(f"Sent abort to {name}.")
+
+
+@cli.command()
 @click.argument("to")
 @click.argument("body")
 @click.pass_context
